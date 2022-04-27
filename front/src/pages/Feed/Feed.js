@@ -68,8 +68,9 @@ class Feed extends Component {
       this.setState({ postPage: page });
     }
     const graphqlQuery = {
-      query: `{
-        posts(page: ${page}) {
+      query: `
+        query FetchPosts($page: Int!){
+        posts(page: $page) {
           posts {
             _id
             title
@@ -81,8 +82,10 @@ class Feed extends Component {
             createdAt
           }
           totalPosts
-        }
-      }`,
+      }}`,
+      variables: {
+        page: page,
+      },
     };
     fetch('http://localhost:8080/graphql', {
       method: 'POST',
@@ -116,10 +119,13 @@ class Feed extends Component {
   statusUpdateHandler = (event) => {
     event.preventDefault();
     const graphqlQuery = {
-      query: `mutation {
-        updateStatus(status: "${this.state.status}"){
+      query: `mutation UpdateUserStatus($userStatus : String!) {
+        updateStatus(status: $userStatus){
           status
         } }`,
+      variables: {
+        userStatus: this.state.status,
+      },
     };
     fetch('http://localhost:8080/graphql', {
       method: 'POST',
@@ -183,10 +189,10 @@ class Feed extends Component {
         return res.json();
       })
       .then((fileResData) => {
-        const imageUrl = fileResData.filePath;
+        const imageUrl = fileResData.filePath.replace('\\', '/');
         let graphqlQuery = {
-          query: `mutation {
-            createPost(postInputData: {title: "${postData.title}", content: "${postData.content}", imageUrl: "${imageUrl}"}) {
+          query: `mutation CreateNewPost($title: String!, $content: String!, $imageUrl: String!) {
+            createPost(postInputData: {title: $title, content: $content, imageUrl: $imageUrl}) {
               _id
               title
               content
@@ -196,13 +202,18 @@ class Feed extends Component {
               }
               createdAt
           }}`,
+          variables: {
+            title: postData.title,
+            content: postData.content,
+            imageUrl: imageUrl,
+          },
         };
 
         if (this.state.editPost) {
           resDataField = 'updatePost';
           graphqlQuery = {
-            query: `mutation {
-              updatePost(id: "${this.state.editPost._id}",postInputData: {  title: "${postData.title}", content: "${postData.content}", imageUrl: "${imageUrl}"}) {
+            query: `mutation UpdateExistingPost($id: ID!, $title: String!, $content: String!, $imageUrl: String!) {
+              updatePost(id: $id,postInputData: {  title: $title, content: $content, imageUrl: $imageUrl}) {
                 _id
                 title
                 content
@@ -212,6 +223,12 @@ class Feed extends Component {
                 }
                 createdAt
             }}`,
+            variables: {
+              id: this.state.editPost._id,
+              title: postData.title,
+              content: postData.content,
+              imageUrl: imageUrl,
+            },
           };
         }
 
@@ -232,7 +249,7 @@ class Feed extends Component {
       })
       .then((resData) => {
         if (resData.errors && resData.errors[0].status === 422) {
-          throw new Error(resData.errors[0].message);
+          throw new Error('Error en en la creación');
         }
         if (resData.errors) {
           throw new Error('Could not create post, please try again!');
@@ -247,12 +264,14 @@ class Feed extends Component {
         };
         this.setState((prevState) => {
           let updatedPosts = [...prevState.posts];
+          let updatedTotalPosts = prevState.totalPosts;
           if (prevState.editPost) {
             const postIndex = prevState.posts.findIndex(
               (p) => p._id === prevState.editPost._id
             );
             updatedPosts[postIndex] = post;
           } else {
+            updatedTotalPosts++;
             if (prevState.posts.length >= 2) {
               updatedPosts.pop();
             }
@@ -263,6 +282,7 @@ class Feed extends Component {
             isEditing: false,
             editPost: null,
             editLoading: false,
+            totalPosts: updatedTotalPosts,
           };
         });
       })
